@@ -41,6 +41,45 @@ allowed = ["tag1", "tag2", "tag3"]
 
 #[test]
 #[serial]
+fn test_get_instance_caches_config_per_manifest_dir_ok() {
+    let content_a = r#"
+[Package]
+name = "consumer_a"
+version = "0.0.1"
+
+[package.metadata.pinny]
+allowed = ["tag_a"]
+"#;
+    let content_b = r#"
+[Package]
+name = "consumer_b"
+version = "0.0.1"
+
+[package.metadata.pinny]
+allowed = ["tag_b"]
+"#;
+
+    let tmp_dir_a = create_cargo_toml(content_a);
+    let tmp_dir_b = create_cargo_toml(content_b);
+
+    // Simulate a single long-lived process (e.g. rust-analyzer's proc-macro
+    // server) expanding macros for two crates with different allowed tags.
+    std::env::set_var("CARGO_MANIFEST_DIR", tmp_dir_a.path());
+    let config_a = Config::get_instance().unwrap();
+    assert_eq!(vec!["tag_a".to_string()], config_a.allowed_tags);
+
+    std::env::set_var("CARGO_MANIFEST_DIR", tmp_dir_b.path());
+    let config_b = Config::get_instance().unwrap();
+    assert_eq!(vec!["tag_b".to_string()], config_b.allowed_tags);
+
+    // The first crate's config must still be served on a cache hit.
+    std::env::set_var("CARGO_MANIFEST_DIR", tmp_dir_a.path());
+    let config_a_again = Config::get_instance().unwrap();
+    assert_eq!(vec!["tag_a".to_string()], config_a_again.allowed_tags);
+}
+
+#[test]
+#[serial]
 fn test_create_config_with_missing_file_ko() {
     let tmp_dir = tempdir().unwrap();
     std::env::set_var("CARGO_MANIFEST_DIR", tmp_dir.path());

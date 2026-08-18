@@ -20,9 +20,7 @@ pub type TagLabels = Punctuated<Ident, Comma>;
 ///
 /// This also help to convert from `proc_macro::TokenStream` to `proc_macro2::TokenStream`
 pub fn macro_impl(attrs: TokenStream, item: TokenStream) -> TokenStream {
-    let config_result = Config::get_instance();
-
-    match config_result {
+    match Config::get_instance() {
         Ok(config) => {
             resolve_tag(attrs.into(), item.into(), &config.allowed_tags)
                 .unwrap_or_else(Error::into_compile_error)
