@@ -23,7 +23,7 @@ jobs:
     steps:
       - name: Sanitize Version
         id: sanitize_version
-        uses: stacks-sbtc/actions/github-script@main
+        uses: stacks-sbtc/actions/github-script@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
         with:
           script: |
             const version = "${{ env.SEMVER }}";
@@ -43,13 +43,13 @@ jobs:
     steps:
       - name: Checkout source branch (${{ env.SOURCE_BRANCH }})
         id: checkout_source_branch
-        uses: stacks-sbtc/actions/checkout@main
+        uses: stacks-sbtc/actions/checkout@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
         with:
           ref: ${{ env.SOURCE_BRANCH }}
       
       - name: Validate Cargo.toml version
         id: validate_cargo_toml_version
-        uses: stacks-sbtc/actions/github-script@main
+        uses: stacks-sbtc/actions/github-script@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
         with:
           script: |
             const version = '${{ env.SEMVER }}';            
@@ -85,13 +85,13 @@ jobs:
     steps:
       - name: Checkout source branch (${{ env.SOURCE_BRANCH }})
         id: checkout_source_branch
-        uses: stacks-sbtc/actions/checkout@main
+        uses: stacks-sbtc/actions/checkout@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
         with:
           ref: ${{ env.SOURCE_BRANCH }}
 
       - name: Merge ${{ env.SOURCE_BRANCH }} into ${{ env.RELEASE_BRANCH }}
         id: merge_source_into_release
-        uses: stacks-sbtc/actions/github-script@main
+        uses: stacks-sbtc/actions/github-script@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
         with:
           script: |
             await github.rest.repos.merge({
@@ -104,7 +104,7 @@ jobs:
 
       - name: Create tag 
         id: create_tag
-        uses: stacks-sbtc/actions/github-script@main
+        uses: stacks-sbtc/actions/github-script@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
         with:
           script: |
             const tag = 'v${{ env.SEMVER }}';
@@ -123,7 +123,7 @@ jobs:
             });
 
       - name: Create GitHub Release
-        uses: stacks-sbtc/actions/github-script@main
+        uses: stacks-sbtc/actions/github-script@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
         with:
           script: |
             const version = `v${{ env.SEMVER }}`;
