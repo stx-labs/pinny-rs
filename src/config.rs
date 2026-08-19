@@ -31,6 +31,7 @@ impl Config {
         let config = Arc::new(ConfigFactory::create_for(&manifest_dir)?);
         debug!("Config initialized for {manifest_dir}: {config:?}");
         cache.insert(manifest_dir, Arc::clone(&config));
+        drop(cache);
         Ok(config)
     }
 }

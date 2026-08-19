@@ -33,7 +33,7 @@ fn test_refer_to_tagged_test_original_name() {
 
 #[tag(tag1)]
 #[test]
-#[ignore]
+#[ignore = "verifies that #[tag] preserves #[ignore]; must never run"]
 fn test_ignored_tagged_test() {
     panic!();
 }
