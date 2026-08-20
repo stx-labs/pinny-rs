@@ -24,11 +24,11 @@ jobs:
         steps:
             - name: Checkout Repository
               id: checkout_Repository
-              uses: stacks-sbtc/actions/checkout@main
+              uses: stacks-sbtc/actions/checkout@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
             
             - name: Setup Rust
               id: setup_rust
-              uses: stacks-sbtc/actions/setup-rust-toolchain@main
+              uses: stacks-sbtc/actions/setup-rust-toolchain@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
               with:
                 # components: clippy, rustfmt
                 cache-key: "rust-cache"
@@ -47,17 +47,17 @@ jobs:
         steps:
             - name: Checkout Repository
               id: checkout_Repository
-              uses: stacks-sbtc/actions/checkout@main
+              uses: stacks-sbtc/actions/checkout@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
 
             - name: Setup Rust
               id: setup_rust
-              uses: stacks-sbtc/actions/setup-rust-toolchain@main
+              uses: stacks-sbtc/actions/setup-rust-toolchain@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
               with:
                 cache-key: "rust-cache"
 
             - name: Install Action
               id: install_action
-              uses: stacks-sbtc/actions/install-action@main
+              uses: stacks-sbtc/actions/install-action@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
               with:
                 tool: nextest@${{ env.NEXTEST_VERSION }}
 

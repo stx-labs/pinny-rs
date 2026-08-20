@@ -1,6 +1,6 @@
 use regex::Regex;
-use std::collections::HashSet;
-use std::sync::OnceLock;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex, OnceLock};
 use thiserror::Error;
 
 include!("include/macros.rs");
@@ -11,18 +11,28 @@ pub struct Config {
 }
 
 impl Config {
-    pub(crate) fn get_instance() -> &'static Result<Self, ConfigError> {
-        static INSTANCE: OnceLock<Result<Config, ConfigError>> =
+    /// Get the config for the crate currently being expanded, cached per
+    /// manifest directory. A single proc-macro server process (e.g.
+    /// rust-analyzer's) expands macros for every crate in a workspace, so a
+    /// process-wide singleton would leak the first crate's allowed tags into
+    /// all the others.
+    pub(crate) fn get_instance() -> Result<Arc<Self>, ConfigError> {
+        static CACHE: OnceLock<Mutex<HashMap<String, Arc<Config>>>> =
             OnceLock::new();
-        debug!(
-            "Accessing singleton. Initialized: {}",
-            INSTANCE.get().is_some()
-        );
-        INSTANCE.get_or_init(|| {
-            let config = ConfigFactory::create()?;
-            debug!("Singleton initialized: {:?}", config);
-            Ok(config)
-        })
+        let manifest_dir = ConfigFactory::manifest_dir()?;
+        let mut cache = CACHE
+            .get_or_init(Default::default)
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(config) = cache.get(&manifest_dir) {
+            debug!("Config cache hit for {manifest_dir}: {config:?}");
+            return Ok(Arc::clone(config));
+        }
+        let config = Arc::new(ConfigFactory::create_for(&manifest_dir)?);
+        debug!("Config initialized for {manifest_dir}: {config:?}");
+        cache.insert(manifest_dir, Arc::clone(&config));
+        drop(cache);
+        Ok(config)
     }
 }
 
@@ -79,12 +89,24 @@ pub struct ConfigFactory {
 }
 
 impl ConfigFactory {
-    pub fn create() -> Result<Config, ConfigError> {
+    /// Resolve the manifest directory of the crate being expanded.
+    pub fn manifest_dir() -> Result<String, ConfigError> {
         // Introduced `PINNY_CARGO_MANIFEST_DIR` as on override for `CARGO_MANIFEST_DIR` to execute tests with trybuilder crate
         // This workaroubnd is suggested even here https://github.com/dtolnay/trybuild/issues/202
-        let manifest_dir = std::env::var("PINNY_CARGO_MANIFEST_DIR")
-            .or_else(|_| std::env::var("CARGO_MANIFEST_DIR"))?;
-        let cargo_path = std::path::Path::new(&manifest_dir).join("Cargo.toml");
+        Ok(std::env::var("PINNY_CARGO_MANIFEST_DIR")
+            .or_else(|_| std::env::var("CARGO_MANIFEST_DIR"))?)
+    }
+
+    /// Create a config for the crate resolved from the environment.
+    /// Only used by tests; `get_instance` resolves the manifest directory
+    /// itself so it can key its cache by it.
+    #[cfg(test)]
+    pub fn create() -> Result<Config, ConfigError> {
+        Self::create_for(&Self::manifest_dir()?)
+    }
+
+    pub fn create_for(manifest_dir: &str) -> Result<Config, ConfigError> {
+        let cargo_path = std::path::Path::new(manifest_dir).join("Cargo.toml");
         let cargo_string = std::fs::read_to_string(cargo_path)?;
         let cargo_toml: toml::Value = cargo_string.parse()?;
 
