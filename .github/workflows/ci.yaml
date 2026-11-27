@@ -3,16 +3,20 @@ name: CI
 on:
     push:
         branches:
-        - develop
+        - main
 
+    # No branch filter: PRs (including from forks) can target any branch.
     pull_request:
         types: [opened, synchronize, reopened]
 
 permissions: {}
 
+# Key PR runs on the PR number: fork branch names (e.g. `main`) are not unique
+# and could otherwise cancel each other or a push run on `main`.
+# Only PR runs are cancelled; every push to `main` runs to completion.
 concurrency:
-    group: push-pr-${{ github.head_ref || github.ref_name || github.run_id}}
-    cancel-in-progress: true
+    group: ${{ github.workflow }}-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.ref }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   NEXTEST_VERSION: 0.9.152

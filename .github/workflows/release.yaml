@@ -8,12 +8,10 @@ on:
         required: true
 
 permissions:
-  contents: write # Needed to create a tag
-  actions: write # Needed to trigger another workflow via API
+  contents: write # Needed to create the tag and the release
 
 env:
-  SOURCE_BRANCH: develop
-  RELEASE_BRANCH: master
+  SOURCE_BRANCH: main
   SEMVER: ${{ github.event.inputs.version }}
 
 jobs:
@@ -40,13 +38,21 @@ jobs:
     name: Check Preconditions
     runs-on: ubuntu-latest
     needs: check_input
+    outputs:
+      release_sha: ${{ steps.resolve_release_sha.outputs.sha }}
     steps:
       - name: Checkout source branch (${{ env.SOURCE_BRANCH }})
         id: checkout_source_branch
         uses: stacks-sbtc/actions/checkout@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
         with:
           ref: ${{ env.SOURCE_BRANCH }}
-      
+
+      # Pin the release to the validated commit, so a later push to
+      # the source branch cannot end up being tagged.
+      - name: Resolve release commit
+        id: resolve_release_sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Validate Cargo.toml version
         id: validate_cargo_toml_version
         uses: stacks-sbtc/actions/github-script@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
@@ -83,38 +89,15 @@ jobs:
       - check_input
       - check_preconditions
     steps:
-      - name: Checkout source branch (${{ env.SOURCE_BRANCH }})
-        id: checkout_source_branch
-        uses: stacks-sbtc/actions/checkout@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
-        with:
-          ref: ${{ env.SOURCE_BRANCH }}
-
-      - name: Merge ${{ env.SOURCE_BRANCH }} into ${{ env.RELEASE_BRANCH }}
-        id: merge_source_into_release
-        uses: stacks-sbtc/actions/github-script@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
-        with:
-          script: |
-            await github.rest.repos.merge({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              base: "${{ env.RELEASE_BRANCH }}",
-              head: "${{ env.SOURCE_BRANCH }}",
-              commit_message: "Release v${{ env.SEMVER }}"
-            });
-
-      - name: Create tag 
+      - name: Create tag on ${{ env.SOURCE_BRANCH }}
         id: create_tag
         uses: stacks-sbtc/actions/github-script@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
         with:
           script: |
             const tag = 'v${{ env.SEMVER }}';
-            const baseBranch = await github.rest.repos.getBranch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              branch: "${{ env.RELEASE_BRANCH }}"
-            });
+            const commit_sha = '${{ needs.check_preconditions.outputs.release_sha }}';
 
-            const commit_sha = baseBranch.data.commit.sha;
+            console.log(`Tagging ${commit_sha} as ${tag}`);
             await github.rest.git.createRef({
               owner: context.repo.owner,
               repo: context.repo.repo,

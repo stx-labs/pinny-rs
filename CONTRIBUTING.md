@@ -19,3 +19,29 @@ Pinny depends on. Keep the dependency tree as small as possible.
   setting environment variables, so no crate is needed to serialize them.
 - A pull request that adds a dependency should explain why the standard
   library is not enough.
+
+## Releasing
+
+Releases are made from `main` by a maintainer, using the
+[Release workflow](.github/workflows/release.yaml).
+
+1. Open a pull request against `main` that sets the new `version` in
+   `Cargo.toml`. Run `cargo check` so `Cargo.lock` is updated too, and commit
+   both files: CI builds with `--locked` and fails on an outdated lock file.
+2. Merge the pull request once CI passes.
+3. In the repository's **Actions** tab, select **Release**, then
+   **Run workflow**. Leave the branch on `main` and enter the version without
+   the `v` prefix, for example `1.2.3`.
+
+The workflow then:
+
+- checks that the version has the form `X.Y.Z`;
+- checks that `version` in `Cargo.toml` on `main` is the same version;
+- tags the commit it checked as `vX.Y.Z`;
+- creates the GitHub release `vX.Y.Z`, with notes generated from the merged
+  pull requests.
+
+If a check fails, nothing is created: fix the cause and run the workflow
+again. If the tag already exists, the workflow stops without changing it. If
+the tag was created but the release was not, either create the release for
+that tag in the GitHub UI, or delete the tag and run the workflow again.
