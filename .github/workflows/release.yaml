@@ -7,8 +7,7 @@ on:
         description: "Semantic version (e.g. 1.2.3)"
         required: true
 
-permissions:
-  contents: write # Needed to create the tag and the release
+permissions: {}
 
 env:
   SOURCE_BRANCH: main
@@ -19,33 +18,43 @@ jobs:
     name: Validate User Input
     runs-on: ubuntu-latest
     steps:
+      - name: Check Workflow Branch
+        id: check_workflow_branch
+        if: github.ref != format('refs/heads/{0}', env.SOURCE_BRANCH)
+        run: |
+          echo "::error::Run this workflow from $SOURCE_BRANCH, not from $GITHUB_REF_NAME"
+          exit 1
+
       - name: Sanitize Version
         id: sanitize_version
-        uses: stacks-sbtc/actions/github-script@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const version = "${{ env.SEMVER }}";
+            const version = process.env.SEMVER;
             const semverRegex = /^\d+\.\d+\.\d+$/;
-            
+
             if (!semverRegex.test(version)) {
               core.setFailed(`Invalid version format: "${version}". Expected SemVer X.Y.Z`);
             } else {
               console.log(`Valid version: ${version}`);
-              core.setOutput('version', version);
             }
 
   check_preconditions:
     name: Check Preconditions
     runs-on: ubuntu-latest
     needs: check_input
+    permissions:
+      contents: read
+      actions: read # Needed to read the CI run of the release commit
     outputs:
       release_sha: ${{ steps.resolve_release_sha.outputs.sha }}
     steps:
       - name: Checkout source branch (${{ env.SOURCE_BRANCH }})
         id: checkout_source_branch
-        uses: stacks-sbtc/actions/checkout@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.SOURCE_BRANCH }}
+          persist-credentials: false
 
       # Pin the release to the validated commit, so a later push to
       # the source branch cannot end up being tagged.
@@ -55,74 +64,134 @@ jobs:
 
       - name: Validate Cargo.toml version
         id: validate_cargo_toml_version
-        uses: stacks-sbtc/actions/github-script@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
+        shell: python3 -I {0}
+        run: |
+          import os
+          import sys
+          import tomllib
+
+          version = os.environ["SEMVER"]
+
+          try:
+              with open("Cargo.toml", "rb") as manifest:
+                  pkg_version = tomllib.load(manifest)["package"]["version"]
+          except (OSError, KeyError, TypeError, ValueError) as error:
+              print(f'::error::Failed to read "package.version" in Cargo.toml: {type(error).__name__}: {error}')
+              sys.exit(1)
+
+          if pkg_version != version:
+              print(f'::error::Version {version} not matching "package.version" {pkg_version!r} in Cargo.toml')
+              sys.exit(1)
+
+          print(f"Cargo.toml contains version {version}")
+
+      - name: Validate CI result
+        id: validate_ci_result
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          RELEASE_SHA: ${{ steps.resolve_release_sha.outputs.sha }}
         with:
           script: |
-            const version = '${{ env.SEMVER }}';            
-            const fs = require('fs');
-            const tomlFilePath = './Cargo.toml';
+            const commit_sha = process.env.RELEASE_SHA;
+            const branch = process.env.SOURCE_BRANCH;
+            const workflow = 'ci.yaml';
 
+            let runs;
             try {
-              const cargoToml = fs.readFileSync(tomlFilePath, 'utf-8');
-              const packageSectionRegex = /\[package\][\s\S]*?version\s*=\s*"([^"]+)"/;
-              const match = cargoToml.match(packageSectionRegex);
-
-              if (!match) {
-                core.setFailed(`Missing "package.version" in Cargo.toml`);
-              } else {
-                const pkg_version = match[1];
-
-                if (pkg_version === version) {
-                  console.log(`Cargo.toml contains version ${version}`);
-                } else {
-                  core.setFailed(`Version ${version} not matching "package.version" ${pkg_version} in Cargo.toml`);
-                }
-              }
+              runs = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: workflow,
+                branch,
+                event: 'push',
+                head_sha: commit_sha,
+                per_page: 1
+              });
             } catch (error) {
-              core.setFailed(`Failed to read Cargo.toml: ${error.message}`);
+              core.setFailed(`Failed to list the runs of workflow ${workflow}: ${error.message}`);
+              return;
+            }
+            const run = runs.data.workflow_runs[0];
+
+            if (!run) {
+              core.setFailed(`No push run of ${workflow} found for ${commit_sha}: CI must have run on the latest commit of ${branch}`);
+            } else if (run.conclusion !== 'success') {
+              core.setFailed(`CI has not passed for ${commit_sha} (${run.conclusion ?? run.status}): ${run.html_url}`);
+            } else {
+              console.log(`CI passed for ${commit_sha}: ${run.html_url}`);
             }
 
   do_release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: 
+    needs:
       - check_input
       - check_preconditions
+    permissions:
+      contents: write # Needed to create the tag and the release
+    env:
+      RELEASE_SHA: ${{ needs.check_preconditions.outputs.release_sha }}
     steps:
       - name: Create tag on ${{ env.SOURCE_BRANCH }}
         id: create_tag
-        uses: stacks-sbtc/actions/github-script@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const tag = 'v${{ env.SEMVER }}';
-            const commit_sha = '${{ needs.check_preconditions.outputs.release_sha }}';
+            const tag = `v${process.env.SEMVER}`;
+            const commit_sha = process.env.RELEASE_SHA;
 
-            console.log(`Tagging ${commit_sha} as ${tag}`);
-            await github.rest.git.createRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: `refs/tags/${tag}`,
-              sha: commit_sha
-            });
+            let existing;
+            try {
+              const ref = await github.rest.git.getRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `tags/${tag}`
+              });
+              existing = ref.data.object;
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+            }
+
+            if (existing?.type === 'tag') {
+              const annotated = await github.rest.git.getTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_sha: existing.sha
+              });
+              existing = annotated.data.object;
+            }
+
+            if (existing?.sha === commit_sha) {
+              console.log(`Tag ${tag} already points at ${commit_sha}`);
+            } else if (existing) {
+              core.setFailed(`Tag ${tag} already exists on ${existing.sha}`);
+            } else {
+              console.log(`Tagging ${commit_sha} as ${tag}`);
+              await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `refs/tags/${tag}`,
+                sha: commit_sha
+              });
+            }
 
       - name: Create GitHub Release
-        uses: stacks-sbtc/actions/github-script@ed353a33594a2fa97ea6702d838e4a935cce374d # main as of 2026-08-19
+        id: create_github_release
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const version = `v${{ env.SEMVER }}`;
-            const releaseDescription = `Release description for ${version}`;
+            const version = `v${process.env.SEMVER}`;
 
             const release = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag_name: version,
               name: version,
-              body: releaseDescription,
               draft: false,
               prerelease: false,
-               generate_release_notes: true
+              generate_release_notes: true
             });
 
-            console.log(`Created draft release: ${release.data.html_url}`);
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            console.log(`Created release: ${release.data.html_url}`);

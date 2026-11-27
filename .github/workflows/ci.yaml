@@ -77,7 +77,7 @@ jobs:
 
             - name: Install Nextest
               id: install_nextest
-              uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+              uses: taiki-e/install-action@073e1fd0bc889c9aee68dbaaa927cde1b5653a83 # v2.90.11
               with:
                 tool: nextest@${{ env.NEXTEST_VERSION }}
                 fallback: none
@@ -86,12 +86,18 @@ jobs:
               id: execute_tests
               run: cargo-nextest nextest run --locked --color always --no-fail-fast
 
+    # Runs even when a needed job fails: a skipped job would otherwise satisfy
+    # a required status check.
     check:
         name: All Checks Passed
         runs-on: ubuntu-latest
         timeout-minutes: 5
+        if: always()
         needs:
             - lint
             - tests
         steps:
-            - run: echo "All checks passed!"
+            - name: Check Job Results
+              id: check_job_results
+              if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+              run: exit 1
