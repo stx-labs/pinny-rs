@@ -13,9 +13,9 @@ permissions: {}
 
 # Key PR runs on the PR number: fork branch names (e.g. `main`) are not unique
 # and could otherwise cancel each other or a push run on `main`.
-# Only PR runs are cancelled; every push to `main` runs to completion.
+# Only PR runs share a group and get cancelled; each push to `main` gets its own group.
 concurrency:
-    group: ${{ github.workflow }}-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.ref }}
+    group: ${{ github.workflow }}-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
